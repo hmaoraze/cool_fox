@@ -1,0 +1,130 @@
+name: Release
+
+# A tag makes a package; a manual run makes the same package without a release,
+# for testing the workflow itself.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Apart from the CI job's cache: that one builds checks and tests,
+          # this one builds executables.
+          key: release
+
+      # The Agility SDK build exports D3D12SDKVersion/D3D12SDKPath and needs
+      # Microsoft's D3D12Core.dll beside the executable. Windows 11 would work
+      # without it, Windows 10 will not (its D3D12 has no Shader Model 6.6
+      # bindless heaps), so the one package serves both.
+      - name: Build the runtime
+        run: cargo build --release --locked -p victory --features agility-sdk
+
+      - name: Build the window
+        run: cargo build --release --locked -p victory-gui
+
+      - name: Fetch the Agility SDK runtime
+        run: powershell -ExecutionPolicy Bypass -File scripts\get-agility-sdk.ps1 -Build release
+
+      - name: Stage the package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $name = "victory-$env:GITHUB_REF_NAME-windows-x64"
+          $dir = "dist/$name"
+          New-Item -ItemType Directory -Force -Path "$dir/D3D12" | Out-Null
+          Copy-Item target/release/victory.exe $dir
+          Copy-Item target/release/victory-gui.exe $dir
+          Copy-Item target/release/D3D12/D3D12Core.dll "$dir/D3D12/"
+          Copy-Item LICENSE $dir
+          Copy-Item docs/asset-policy.md $dir
+
+          # The C runtime the MSVC build links against, from the Visual Studio
+          # that built it; skipped, not failed, when it cannot be found.
+          $crt = $null
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            $vs = & $vswhere -latest -products '*' -property installationPath
+            if ($vs) {
+              $crt = Get-ChildItem "$vs\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\vcruntime140.dll" `
+                -ErrorAction SilentlyContinue | Select-Object -First 1
+            }
+          }
+          if (-not $crt) {
+            $crt = Get-ChildItem 'C:\Program Files\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT\vcruntime140.dll' `
+              -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if ($crt) {
+            Copy-Item $crt.FullName $dir
+          } else {
+            Write-Warning 'vcruntime140.dll was not found in the runner image; the package relies on the installed VC redistributable'
+          }
+
+          $text = @(
+            "victory $env:GITHUB_REF_NAME for Windows x64",
+            "",
+            "victory.exe       the runtime",
+            "victory-gui.exe   the same thing in a window: drop the dump folder on",
+            "                  it, pick a preset, press Start",
+            "D3D12\            Microsoft's Agility SDK runtime, which this build",
+            "                  asks for; keep it beside victory.exe",
+            "",
+            "Both are built from this repository's source at this tag with",
+            "--features agility-sdk, so Windows 10 and Windows 11 both work.",
+            "",
+            "Try:  victory.exe gpu-info          the adapter a run would use",
+            "      victory.exe profiles          the switch table of each preset",
+            "      victory.exe run <exe> --execute --profile balanced",
+            "      victory-gui.exe               the window",
+            "",
+            "Requirements: Windows 10/11 x64, an AVX2 CPU, a Direct3D 12 GPU with",
+            "Shader Model 6.6 and mesh shaders (RDNA 3 / Ada and later), and the",
+            "game's own files - none of which this package contains.",
+            "",
+            "Licensed GPL-3.0-or-later; see LICENSE. Nothing from any game is",
+            "included or linked; see asset-policy.md."
+          )
+          $text | Set-Content "$dir\README.txt" -Encoding utf8
+
+          Compress-Archive -Path $dir -DestinationPath "dist/$name.zip" -Force
+          Get-ChildItem dist/*.zip | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: victory-windows-x64
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          # A re-run of the same tag replaces the files instead of failing.
+          gh release view $tag --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag dist/*.zip --clobber
+          } else {
+            gh release create $tag dist/*.zip --title $tag --generate-notes
+          }

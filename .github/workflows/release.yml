@@ -121,27 +121,47 @@ jobs:
         run: |
           # Native tools report through $LASTEXITCODE and stderr, and `Stop`
           # turns the first stderr line of a *probe* ("release not found") into
-          # a failed step - which is how v0.1.0 first failed, after the build.
+          # a failed step. Every gh call therefore captures its own output, and
+          # a failure is printed before the step ends, so the log carries the
+          # reason instead of only "exit code 1".
           $ErrorActionPreference = 'Continue'
           $tag = $env:GITHUB_REF_NAME
           $zip = Get-ChildItem dist/*.zip | Select-Object -First 1
           if (-not $zip) { throw 'no package in dist/' }
           Write-Host ("package: {0} ({1:N1} MB)" -f $zip.Name, ($zip.Length / 1MB))
 
+          Write-Host '--- who is publishing ---'
+          gh auth status *>&1 | Write-Host
+
           # The annotated tag's own message is the release body, so the notes
           # are written where the version is decided and travel with it.
           $notes = git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag
           Write-Host ("tag message: " + $(if ($notes) { 'yes' } else { 'none' }))
 
-          gh release view $tag --json tagName *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $probe = gh release view $tag -q '.tagName' *>&1 | Out-String
+          $exists = ($LASTEXITCODE -eq 0)
+          Write-Host ('release exists: ' + $exists + ' ' + $probe.Trim())
+
+          if ($exists) {
             # A re-run of the same tag replaces the files instead of failing.
-            Write-Host 'the release exists: uploading over it'
-            gh release upload $tag $zip.FullName --clobber
-            if ($notes) { gh release edit $tag --notes $notes }
-          } elseif ($notes) {
-            gh release create $tag $zip.FullName --title $tag --notes $notes
+            $result = gh release upload $tag $zip.FullName --clobber *>&1 | Out-String
+            $code = $LASTEXITCODE
+            if ($code -eq 0 -and $notes) { gh release edit $tag --notes $notes *>&1 | Out-Null }
           } else {
-            gh release create $tag $zip.FullName --title $tag --generate-notes
+            if ($notes) {
+              $result = gh release create $tag $zip.FullName --title $tag --notes $notes *>&1 | Out-String
+            } else {
+              $result = gh release create $tag $zip.FullName --title $tag --generate-notes *>&1 | Out-String
+            }
+            $code = $LASTEXITCODE
           }
-          exit $LASTEXITCODE
+
+          Write-Host '--- gh said ---'
+          Write-Host $result
+          if ($code -ne 0) {
+            Write-Host "A 403 (Resource not accessible by integration) here means this"
+            Write-Host "repository's workflow token is read-only: Settings > Actions >"
+            Write-Host 'General > Workflow permissions > "Read and write permissions".'
+            Write-Host 'The permissions block in a workflow can narrow that setting, not widen it.'
+          }
+          exit $code

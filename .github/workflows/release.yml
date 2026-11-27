@@ -135,10 +135,16 @@ jobs:
 
           # The annotated tag's own message is the release body, so the notes
           # are written where the version is decided and travel with it.
-          $notes = git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag
+          # Joined, not left as the array git's output becomes in PowerShell:
+          # an array would fill --notes with its first line and hand the rest to
+          # gh as file patterns ("no matches found for ``").
+          $notes = (git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag) -join "`n"
+          $notes = $notes.Trim()
           Write-Host ("tag message: " + $(if ($notes) { 'yes' } else { 'none' }))
 
-          $probe = gh release view $tag -q '.tagName' *>&1 | Out-String
+          # -q needs --json on `gh release view`; without it the probe fails and
+          # every run looks like "no release yet".
+          $probe = gh release view $tag --json tagName -q '.tagName' *>&1 | Out-String
           $exists = ($LASTEXITCODE -eq 0)
           Write-Host ('release exists: ' + $exists + ' ' + $probe.Trim())
 

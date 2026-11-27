@@ -1,5 +1,7 @@
 # cool_fox
 
+**English** | [简体中文](README-zh-CN.md)
+
 [![CI](https://github.com/hmaoraze/cool_fox/actions/workflows/ci.yml/badge.svg)](https://github.com/hmaoraze/cool_fox/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/hmaoraze/cool_fox?label=release)](https://github.com/hmaoraze/cool_fox/releases/latest)
 

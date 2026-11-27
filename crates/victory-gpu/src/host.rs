@@ -902,6 +902,16 @@ fn create() -> windows::core::Result<Host> {
             let adapter = warp_adapter()?;
             D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_0, &mut device)?;
             tracing::info!("host device on the software adapter (WARP)");
+        } else if crate::toggled!("VICTORY_D3D12_ADAPTER") {
+            // In DXGI's performance order, not Windows' idea of a default:
+            // on a laptop with two GPUs `None` is the integrated one.
+            let chosen = crate::adapter::hardware_device(true)?;
+            if let Ok(name) = crate::adapter::describe_device(&chosen) {
+                tracing::info!(adapter = %name, "host device");
+            }
+            device = Some(chosen);
+            // Whether a GPU hang ends the run or freezes the PC (#1054).
+            crate::tdr::log();
         } else {
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_0, &mut device)?;
             // Whether a GPU hang ends the run or freezes the PC (#1054).

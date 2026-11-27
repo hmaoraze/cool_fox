@@ -90,6 +90,59 @@ For 4 GB VRAM GPUs or low-memory systems:
 | `Play-VIctory-4GB.cmd` | 4 GB VRAM | 6, 7 on; 1, 5 off | Series S profile, reduced card buffers |
 | `scripts\play.ps1` | Diagnostics | 6, 7 on; `-Safe` disables | Full logging; `-RayTracing` for RT |
 
+### Presets
+
+The switch table is no longer written out three times, once per launcher. It
+lives in `apps/victory/src/profile.rs`, and the launchers name a set:
+
+```powershell
+victory profiles                 # every table, for --vendor other
+victory profiles --vendor amd    # the same tables as an AMD card would get
+victory gpu-info                 # the adapter a run would use, and why
+```
+
+| Profile | Console | What it sets |
+|---|---|---|
+| `pareto-residency` | Series X | what `Play-VIctory.cmd` has always set |
+| `pareto-residency-amd` | Series X | the same plus recorded lists and ports 1, 5 |
+| `balanced` | Series X | 1080p at 0.667 render scale, 60 Hz tick, ports by vendor |
+| `speed` | Series X | 936p, no frame cap, every port safe for the card |
+| `quality` | Series X | 1440p at scale 1.0 with `VICTORY_BVH_BUILDER` (about a third slower) |
+| `lowvram` | Series S | 720p, coarser card buffers, driver background work off |
+
+`balanced` and `speed` read the vendor: `--vendor amd` turns recorded lists
+(`VICTORY_THIN`) and all four ports on; `nvidia` and `other` (the default) leave
+them off, because with recorded lists the heads and skin of people in play are
+not drawn, and `VICTORY_PORT_CBV` under 12 GB can drop road surfaces. A switch
+already in the environment is never overwritten, so `set VICTORY_AMBIENT=0.4`
+still changes exactly one value.
+
+The launchers take a profile name as their first argument:
+
+```powershell
+.\Play-VIctory.cmd balanced
+.\Play-VIctory-AMD.cmd speed
+```
+
+`victory run` also selects its adapter in DXGI's performance order rather than
+Windows' default, which on a laptop with two GPUs is the integrated one. A
+machine where that picks the wrong card can go back with
+`VICTORY_D3D12_ADAPTER=0`.
+
+### A window in front of the same commands
+
+```powershell
+cargo run --release -p victory-gui
+```
+
+Drop the dump folder on the window (or paste it), pick a preset, press Start.
+The buttons are exactly `victory run --profile …`, `victory shaders …`,
+`victory gpu-info` and `victory config`, and the pane at the bottom is their
+output, line for line. It looks for `victory.exe` beside itself, then in
+`target\release`; `VICTORY_BIN` overrides both.
+
+
+
 ### Diagnostics & Pre-warming
 
 ```powershell

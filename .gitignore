@@ -11,6 +11,11 @@
 /target/
 /tests/fixtures/*/target/
 
+# Local releases built here for testing (an unpacked launcher folder and its
+# archive): binaries, notes and the model's scratch space; never tracked.
+/dist/
+/.workbuddy/
+
 # Local configuration (contains paths to YOUR files)
 /victory.toml
 

@@ -1,9 +1,17 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
-if not "%~1"=="" if /i not "%~1"=="pareto-residency" (
-  echo Usage: Play-VIctory.cmd pareto-residency 1>&2
-  exit /b 2
-)
+rem Safe default for every GPU: Series X, no recorded lists, renderer ports 6
+rem and 7 only, the constant ambient stand-in.
+rem
+rem The table itself lives in apps/victory/src/profile.rs now; this file only
+rem names a set, and the binary validates the name. `victory profiles` prints
+rem every table, `victory gpu-info` prints the card a run would land on.
+rem
+rem Another set as the first argument:
+rem   Play-VIctory.cmd balanced | speed | quality | lowvram
+rem   Play-VIctory.cmd pareto-residency-amd          (Radeon: all four ports)
+set "PROFILE=%~1"
+if not defined PROFILE set "PROFILE=pareto-residency"
 if not defined VICTORY_GAME_DIR (
   echo Set VICTORY_GAME_DIR to the folder containing your title executable. 1>&2
   exit /b 2
@@ -18,47 +26,7 @@ if not exist "%runner%" (
   echo Extract the Windows release or run cargo build --release --locked -p victory. 1>&2
   exit /b 2
 )
-if not defined VICTORY_AMBIENT_AIR set "VICTORY_AMBIENT_AIR=1.5"
-if not defined VICTORY_CACHE_DIR set "VICTORY_CACHE_DIR=%LOCALAPPDATA%\VIctory\cache-pareto"
-if not defined VICTORY_TEXTURE_NO_WAIT set "VICTORY_TEXTURE_NO_WAIT=1"
-if not defined VICTORY_RELAY set "VICTORY_RELAY=2"
-if not defined VICTORY_WIDE_BACK set "VICTORY_WIDE_BACK=1"
-if not defined VICTORY_CARD_REHASH_RUNS set "VICTORY_CARD_REHASH_RUNS=1"
-if not defined VICTORY_JOIN_COPIES set "VICTORY_JOIN_COPIES=1"
-if not defined VICTORY_INDIRECT_WINDOW set "VICTORY_INDIRECT_WINDOW=1"
-if not defined VICTORY_RELAY_COPY set "VICTORY_RELAY_COPY=1"
-if not defined VICTORY_CARD_STEPS set "VICTORY_CARD_STEPS=2"
-if not defined VICTORY_INDIRECT_BATCH set "VICTORY_INDIRECT_BATCH=2"
-if not defined VICTORY_MAP_THREADS set "VICTORY_MAP_THREADS=1"
-if not defined VICTORY_CARD_AWAKE set "VICTORY_CARD_AWAKE=1"
-if not defined VICTORY_SHOW_AFTER set "VICTORY_SHOW_AFTER=1"
-rem A constant, not the frame estimate: walking into a bright doorway raised
-rem the estimate and washed the whole frame out. constant:1.0 is even light.
-if not defined VICTORY_AMBIENT set "VICTORY_AMBIENT=constant:0.8"
-rem The write guard misses some titles' writes: skin on a guard's arms and the
-rem phone's frame read garbage (colour noise) until every check hashed the
-rem texture again. Costs some CPU; the frame rate held at 5-7 fps here.
-if not defined VICTORY_TEXTURE_GUARD set "VICTORY_TEXTURE_GUARD=0"
-rem The asynchronous submission paths stay off on NVIDIA: with THIN the head
-rem skin of people in play is not drawn (eyes and teeth are), and JOIN_PARTS
-rem repeats frames of the opening video. Set them to 1 to try instead.
-if not defined VICTORY_THIN set "VICTORY_THIN=0"
-if not defined VICTORY_JOIN_PARTS set "VICTORY_JOIN_PARTS=0"
-rem Renderer ports 6 & 7 (write-guard lock sharing, journal split) save 2-5 ms
-rem per frame and are safe on every tested GPU. Ports 1 & 5 stay opt-in: on
-rem 8 GB NVIDIA cards PORT_CBV=1 can drop road surfaces and
-rem PORT_CONSTANTS+PORT_CBV can raise a C++ exception (#15).
-if not defined VICTORY_PORT_GUARD set "VICTORY_PORT_GUARD=1"
-if not defined VICTORY_PORT_JOURNAL set "VICTORY_PORT_JOURNAL=1"
-if not defined VICTORY_PORT_CONSTANTS set "VICTORY_PORT_CONSTANTS=0"
-if not defined VICTORY_PORT_CBV set "VICTORY_PORT_CBV=0"
-if not defined VICTORY_LIBRARY_STORE_LATER set "VICTORY_LIBRARY_STORE_LATER=1"
-if not defined VICTORY_PIPELINE_WAIT_MS set "VICTORY_PIPELINE_WAIT_MS=0"
-if not defined VICTORY_UPLOAD_AHEAD set "VICTORY_UPLOAD_AHEAD=1"
-if not defined VICTORY_LEVELS_ON_DEMAND set "VICTORY_LEVELS_ON_DEMAND=1"
-if not defined VICTORY_CARD_BUFFERS_MIN_KB set "VICTORY_CARD_BUFFERS_MIN_KB=64"
-if not defined VICTORY_LOG if not defined RUST_LOG set "VICTORY_LOG=warn"
-rem Series X, not S: on an 8 GB card series-s drops the head/skin meshes (faces
-rem render as eyes and teeth only); series-x renders them. Verified 2026-11-26.
-"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --console series-x --execute
+rem A switch already in the environment wins over the preset, as `if not
+rem defined` did: `set VICTORY_AMBIENT=0.4` still changes one value only.
+"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --profile "%PROFILE%" --execute
 exit /b %errorlevel%

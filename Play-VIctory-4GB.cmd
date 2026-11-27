@@ -1,5 +1,12 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
+rem 4 GB cards: 720p on the Series S profile, coarser card-buffer granularity,
+rem the driver's background recompile threads off.
+rem
+rem The table lives in apps/victory/src/profile.rs. Series S can drop head and
+rem skin meshes on some cards; that is the known trade, not a fault.
+set "PROFILE=%~1"
+if not defined PROFILE set "PROFILE=lowvram"
 if not defined VICTORY_GAME_DIR (
   echo Set VICTORY_GAME_DIR to the folder containing your title executable. 1>&2
   exit /b 2
@@ -10,38 +17,9 @@ if not exist "%VICTORY_GAME_DIR%\game_scarlett_master.exe" (
 )
 set "runner=%~dp0target\release\victory.exe"
 if not exist "%runner%" set "runner=%~dp0victory-3d-rtx-pareto-residency.exe"
-
-set "VICTORY_CACHE_DIR=%LOCALAPPDATA%\VIctory\cache-pareto"
-set "VICTORY_AMBIENT_AIR=1.5"
-set "VICTORY_AMBIENT=0.8"
-set "VICTORY_TEXTURE_NO_WAIT=1"
-set "VICTORY_RELAY=2"
-set "VICTORY_WIDE_BACK=1"
-set "VICTORY_CARD_REHASH_RUNS=1"
-set "VICTORY_JOIN_COPIES=1"
-set "VICTORY_INDIRECT_WINDOW=1"
-set "VICTORY_RELAY_COPY=1"
-set "VICTORY_CARD_STEPS=2"
-set "VICTORY_INDIRECT_BATCH=2"
-set "VICTORY_MAP_THREADS=1"
-set "VICTORY_CARD_AWAKE=1"
-set "VICTORY_SHOW_AFTER=1"
-if not defined VICTORY_THIN set "VICTORY_THIN=0"
-if not defined VICTORY_JOIN_PARTS set "VICTORY_JOIN_PARTS=0"
-if not defined VICTORY_LIBRARY_STORE_LATER set "VICTORY_LIBRARY_STORE_LATER=1"
-if not defined VICTORY_PIPELINE_WAIT_MS set "VICTORY_PIPELINE_WAIT_MS=0"
-if not defined VICTORY_PORT_GUARD set "VICTORY_PORT_GUARD=1"
-if not defined VICTORY_PORT_JOURNAL set "VICTORY_PORT_JOURNAL=1"
-if not defined VICTORY_PORT_CONSTANTS set "VICTORY_PORT_CONSTANTS=0"
-if not defined VICTORY_PORT_CBV set "VICTORY_PORT_CBV=0"
-if not defined VICTORY_UPLOAD_AHEAD set "VICTORY_UPLOAD_AHEAD=1"
-set "VICTORY_LEVELS_ON_DEMAND=1"
-
-:: 4 GB VRAM tuning: reduce card-buffer thrashing and driver background recompile threads
-set "VICTORY_CARD_BUFFERS_MIN_KB=4096"
-set "VICTORY_CARD_BUFFERS_MB=256"
-set "VICTORY_D3D12_BACKGROUND=0"
-if not defined VICTORY_LOG set "VICTORY_LOG=warn"
-
-"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --console series-s --execute
+if not exist "%runner%" (
+  echo Extract the Windows release or run cargo build --release --locked -p victory. 1>&2
+  exit /b 2
+)
+"%runner%" run "%VICTORY_GAME_DIR%\game_scarlett_master.exe" --profile "%PROFILE%" --execute
 exit /b %errorlevel%

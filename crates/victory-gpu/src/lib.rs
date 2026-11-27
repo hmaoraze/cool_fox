@@ -18,6 +18,8 @@
 #[cfg(all(test, windows, feature = "agility-sdk"))]
 mod agility_tests;
 #[cfg(windows)]
+pub mod adapter;
+#[cfg(windows)]
 mod ambient;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod capture;

@@ -8,6 +8,7 @@ mod agility;
 mod census;
 mod inspect;
 mod memcmp;
+mod profile;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod replay;
 mod run;
@@ -21,6 +22,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+use crate::profile::{GpuVendor, Profile};
+
 #[derive(Parser)]
 #[command(
     name = "victory",
@@ -28,6 +31,13 @@ use clap::{Parser, Subcommand, ValueEnum};
     about = "Run an Xbox Series title natively on Windows"
 )]
 struct Cli {
+    /// A named set of switches (see `victory profiles`), applied before
+    /// anything reads one. A switch already in the environment wins.
+    #[arg(long, value_enum, global = true)]
+    profile: Option<Profile>,
+    /// Which card a vendor-dependent preset is written for.
+    #[arg(long, value_enum, global = true, default_value_t = GpuVendor::Other)]
+    vendor: GpuVendor,
     #[command(subcommand)]
     command: Command,
 }
@@ -145,9 +155,10 @@ enum Command {
         /// Actually start the title. Without it, stop after binding.
         #[arg(long)]
         execute: bool,
-        /// The console model the title sees (device type, memory).
-        #[arg(long, value_enum, default_value_t = Console::SeriesX)]
-        console: Console,
+        /// The console model the title sees (device type, memory). Defaults to
+        /// the one the profile names, else Series X.
+        #[arg(long, value_enum)]
+        console: Option<Console>,
         /// Arguments for the title, after `--` (it reads the whole command
         /// line; a title that relaunches itself passes some).
         #[arg(last = true)]
@@ -159,6 +170,13 @@ enum Command {
     Replay(replay::Replay),
     /// Show the resolved configuration and check it.
     Config,
+    /// Print the adapter a run would use: DXGI's performance order, not
+    /// Windows' default (on a laptop with two GPUs that is the integrated one).
+    #[cfg(windows)]
+    GpuInfo,
+    /// Print the switch table of every named set (`--profile`), for the
+    /// launchers that used to keep their own copy of them.
+    Profiles,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -174,14 +192,30 @@ enum Console {
 }
 
 fn main() -> Result<()> {
-    victory_core::logging::init("info");
-    // The audio recorder `run` starts for `VICTORY_AUDIO_CAPTURE`.
+    // The recorder `run` starts for `VICTORY_AUDIO_CAPTURE` is this same
+    // executable with no command line at all (capture::start), so it has to be
+    // recognised before the parse, not after it.
     #[cfg(all(windows, feature = "diagnostics"))]
     if victory_hle::modules::audio::capture::child() {
+        victory_core::logging::init("info");
         return Ok(());
     }
-    let cli = Cli::parse();
-    match cli.command {
+
+    let Cli {
+        profile,
+        vendor,
+        command,
+    } = Cli::parse();
+
+    // Before logging starts: VICTORY_LOG is one of the switches a preset sets,
+    // so it has to be in the environment before the filter is built.
+    if let Some(chosen) = profile {
+        let wrote = chosen.apply(vendor);
+        eprintln!("profile {}: {} switches", chosen.name(), wrote.len());
+    }
+
+    victory_core::logging::init("info");
+    match command {
         Command::Inspect {
             file,
             imports,
@@ -233,12 +267,47 @@ fn main() -> Result<()> {
             title_args,
         } => {
             victory_hle::runtime::set_title_args(title_args);
+            let console = console.unwrap_or_else(|| console_of(profile));
             run::run(&exe, unimplemented, strict, execute, console)
         }
         #[cfg(all(windows, feature = "diagnostics"))]
         Command::Replay(options) => replay::run(options),
         Command::Config => show_config(),
+        #[cfg(windows)]
+        Command::GpuInfo => show_gpu(),
+        Command::Profiles => show_profiles(vendor),
     }
+}
+
+#[cfg(windows)]
+fn show_gpu() -> Result<()> {
+    let device = victory_hle::adapter::hardware_device(true)?;
+    println!("chosen   {}", victory_hle::adapter::describe_device(&device)?);
+    println!("the run uses this one, in DXGI's performance order");
+    println!("(VICTORY_D3D12_ADAPTER=0 goes back to Windows' default adapter)");
+    Ok(())
+}
+
+/// The console model to run as: the flag if it was given, else the one the
+/// profile names, else Series X.
+fn console_of(profile: Option<Profile>) -> Console {
+    match profile.map(Profile::console) {
+        Some("series-s") => Console::SeriesS,
+        _ => Console::SeriesX,
+    }
+}
+
+fn show_profiles(vendor: GpuVendor) -> Result<()> {
+    println!("profiles, as written for --vendor {}", vendor.name());
+    println!("a switch already in the environment is not overwritten");
+    for p in Profile::all() {
+        println!();
+        println!("{:<22} console {}", p.name(), p.console());
+        for (key, value) in p.switches(vendor) {
+            println!("  {key:<30} {value}");
+        }
+    }
+    Ok(())
 }
 
 fn show_config() -> Result<()> {

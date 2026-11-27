@@ -1,0 +1,21 @@
+[package]
+name = "victory-gui"
+description = "A small window in front of victory.exe: the folder, a preset, a button."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = [
+    "default_fonts",
+    "glow",
+] }
+
+[target.'cfg(windows)'.dependencies]
+# No console window may flash when the runtime is started from a window.
+windows-sys = { workspace = true, features = ["Win32_System_Threading"] }
+
+[lints]
+workspace = true

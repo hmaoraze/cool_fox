@@ -273,7 +273,17 @@ victory translate [paths...] [--validate] [--pipelines] [--list] [--jobs N]
 victory run <exe> [--execute] [--unimplemented trap|zero] [--strict]
             [--console series-x|series-s] [-- <title arguments>]
 victory config
+victory profiles [--vendor amd|nvidia|other]
+victory gpu-info
 ```
+
+`--profile <name>` goes on any command and applies a named switch table
+(`apps/victory/src/profile.rs`) before anything reads a switch: logging
+included, since `VICTORY_LOG` is one of them. A switch already in the
+environment is not overwritten. `--vendor` only changes `balanced` and `speed`,
+which turn recorded command lists and the two risky renderer ports on for
+`amd` and leave them off for `nvidia`/`other`.
+
 
 Logging: `VICTORY_LOG=victory_loader=trace,info` (a release build logs
 info and above).

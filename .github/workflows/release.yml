@@ -119,18 +119,29 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ErrorActionPreference = 'Stop'
+          # Native tools report through $LASTEXITCODE and stderr, and `Stop`
+          # turns the first stderr line of a *probe* ("release not found") into
+          # a failed step - which is how v0.1.0 first failed, after the build.
+          $ErrorActionPreference = 'Continue'
           $tag = $env:GITHUB_REF_NAME
+          $zip = Get-ChildItem dist/*.zip | Select-Object -First 1
+          if (-not $zip) { throw 'no package in dist/' }
+          Write-Host ("package: {0} ({1:N1} MB)" -f $zip.Name, ($zip.Length / 1MB))
+
           # The annotated tag's own message is the release body, so the notes
           # are written where the version is decided and travel with it.
           $notes = git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag
-          # A re-run of the same tag replaces the files instead of failing.
-          gh release view $tag --json tagName 2>$null | Out-Null
+          Write-Host ("tag message: " + $(if ($notes) { 'yes' } else { 'none' }))
+
+          gh release view $tag --json tagName *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag dist/*.zip --clobber
+            # A re-run of the same tag replaces the files instead of failing.
+            Write-Host 'the release exists: uploading over it'
+            gh release upload $tag $zip.FullName --clobber
             if ($notes) { gh release edit $tag --notes $notes }
           } elseif ($notes) {
-            gh release create $tag dist/*.zip --title $tag --notes $notes
+            gh release create $tag $zip.FullName --title $tag --notes $notes
           } else {
-            gh release create $tag dist/*.zip --title $tag --generate-notes
+            gh release create $tag $zip.FullName --title $tag --generate-notes
           }
+          exit $LASTEXITCODE

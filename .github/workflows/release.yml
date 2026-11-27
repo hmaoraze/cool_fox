@@ -159,7 +159,24 @@ jobs:
           Write-Host '--- gh said ---'
           Write-Host $result
           if ($code -ne 0) {
-            Write-Host "A 403 (Resource not accessible by integration) here means this"
+            # The step log needs an account to read; the run summary does not,
+            # so a failure explains itself to anyone looking at the run page.
+            $summary = $env:GITHUB_STEP_SUMMARY
+            if ($summary) {
+              @(
+                '## the release step failed',
+                '',
+                '```text',
+                $result.Trim(),
+                '```',
+                '',
+                'A 403 (Resource not accessible by integration) means the repository''s',
+                'workflow token is read-only: Settings > Actions > General >',
+                'Workflow permissions > "Read and write permissions". The permissions',
+                'block in a workflow can narrow that setting, not widen it.'
+              ) | Out-File -FilePath $summary -Append -Encoding utf8
+            }
+            Write-Host 'A 403 (Resource not accessible by integration) here means this'
             Write-Host "repository's workflow token is read-only: Settings > Actions >"
             Write-Host 'General > Workflow permissions > "Read and write permissions".'
             Write-Host 'The permissions block in a workflow can narrow that setting, not widen it.'

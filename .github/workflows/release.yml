@@ -118,73 +118,10 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          # Native tools report through $LASTEXITCODE and stderr, and `Stop`
-          # turns the first stderr line of a *probe* ("release not found") into
-          # a failed step. Every gh call therefore captures its own output, and
-          # a failure is printed before the step ends, so the log carries the
-          # reason instead of only "exit code 1".
-          $ErrorActionPreference = 'Continue'
-          $tag = $env:GITHUB_REF_NAME
-          $zip = Get-ChildItem dist/*.zip | Select-Object -First 1
-          if (-not $zip) { throw 'no package in dist/' }
-          Write-Host ("package: {0} ({1:N1} MB)" -f $zip.Name, ($zip.Length / 1MB))
-
-          Write-Host '--- who is publishing ---'
-          gh auth status *>&1 | Write-Host
-
-          # The annotated tag's own message is the release body, so the notes
-          # are written where the version is decided and travel with it.
-          # Joined, not left as the array git's output becomes in PowerShell:
-          # an array would fill --notes with its first line and hand the rest to
-          # gh as file patterns ("no matches found for ``").
-          $notes = (git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' $tag) -join "`n"
-          $notes = $notes.Trim()
-          Write-Host ("tag message: " + $(if ($notes) { 'yes' } else { 'none' }))
-
-          # -q needs --json on `gh release view`; without it the probe fails and
-          # every run looks like "no release yet".
-          $probe = gh release view $tag --json tagName -q '.tagName' *>&1 | Out-String
-          $exists = ($LASTEXITCODE -eq 0)
-          Write-Host ('release exists: ' + $exists + ' ' + $probe.Trim())
-
-          if ($exists) {
-            # A re-run of the same tag replaces the files instead of failing.
-            $result = gh release upload $tag $zip.FullName --clobber *>&1 | Out-String
-            $code = $LASTEXITCODE
-            if ($code -eq 0 -and $notes) { gh release edit $tag --notes $notes *>&1 | Out-Null }
-          } else {
-            if ($notes) {
-              $result = gh release create $tag $zip.FullName --title $tag --notes $notes *>&1 | Out-String
-            } else {
-              $result = gh release create $tag $zip.FullName --title $tag --generate-notes *>&1 | Out-String
-            }
-            $code = $LASTEXITCODE
-          }
-
-          Write-Host '--- gh said ---'
-          Write-Host $result
-          if ($code -ne 0) {
-            # The step log needs an account to read; the run summary does not,
-            # so a failure explains itself to anyone looking at the run page.
-            $summary = $env:GITHUB_STEP_SUMMARY
-            if ($summary) {
-              @(
-                '## the release step failed',
-                '',
-                '```text',
-                $result.Trim(),
-                '```',
-                '',
-                'A 403 (Resource not accessible by integration) means the repository''s',
-                'workflow token is read-only: Settings > Actions > General >',
-                'Workflow permissions > "Read and write permissions". The permissions',
-                'block in a workflow can narrow that setting, not widen it.'
-              ) | Out-File -FilePath $summary -Append -Encoding utf8
-            }
-            Write-Host 'A 403 (Resource not accessible by integration) here means this'
-            Write-Host "repository's workflow token is read-only: Settings > Actions >"
-            Write-Host 'General > Workflow permissions > "Read and write permissions".'
-            Write-Host 'The permissions block in a workflow can narrow that setting, not widen it.'
-          }
-          exit $code
+        # scripts/publish-release.ps1 holds the whole of it, including the rules
+        # this step used to violate one run at a time: a native command's stderr
+        # is not an error, an exit code is read the moment the call returns,
+        # multi-line output is an array, and `-q` needs `--json`. It can be run
+        # here by hand:
+        #   scripts/publish-release.ps1 -Tag v0.1.0 -WhatIf
+        run: ./scripts/publish-release.ps1 -Tag $env:GITHUB_REF_NAME

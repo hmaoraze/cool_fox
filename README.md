@@ -1,10 +1,44 @@
 # cool_fox
 
-[![CI](https://github.com/DoubleGhosty/cool_fox/actions/workflows/ci.yml/badge.svg)](https://github.com/DoubleGhosty/cool_fox/actions/workflows/ci.yml)
+[![CI](https://github.com/hmaoraze/cool_fox/actions/workflows/ci.yml/badge.svg)](https://github.com/hmaoraze/cool_fox/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/hmaoraze/cool_fox?label=release)](https://github.com/hmaoraze/cool_fox/releases/latest)
 
 Experimental compatibility layer and shader translation runtime for running Xbox Series (Scarlett / GDK) x64 executables natively on Windows D3D12 (AMD Radeon and NVIDIA GeForce).
 
 > **Legal notice:** This repository contains no copyrighted game code, keys, assets, or executables. It does not provide or link to any third-party software, and does not instruct or encourage bypassing console protections. Use only with software you are legally entitled to run. All original code here is licensed under **GPL-3.0-or-later** (see [LICENSE](LICENSE) and [docs/asset-policy.md](docs/asset-policy.md)).
+
+---
+
+## What this fork is
+
+The runtime is upstream's work: [DoubleGhosty/cool_fox](https://github.com/DoubleGhosty/cool_fox)
+did the port, the translation and the measurements. This fork is a
+**distribution and usability layer** on top of it, and it keeps its changes in
+five places, each of which is a thing that stopped a run from starting or made
+a run impossible to explain:
+
+- **Six named presets, written down once** (`apps/victory/src/profile.rs`).
+  The three `.cmd` files used to carry their own copy of the switch table and
+  had begun to disagree with each other and with the binary. A launcher now
+  names a preset; `victory profiles` prints what a name means.
+- **The adapter Windows would not pick.** `D3D12CreateDevice(None)` is "the
+  default adapter", which on a laptop with two GPUs is the integrated one - the
+  title then runs on the wrong card or never passes the Shader Model 6.6 check.
+  The run selects in DXGI's performance order instead, and `victory gpu-info`
+  prints the choice.
+- **A window** (`apps/victory-gui`): drop the folder on it, pick a preset,
+  press Start. Every button is the same command line.
+- **Releases that are built, not assembled.** A `v*` tag builds both
+  executables with `--features agility-sdk`, fetches Microsoft's D3D12Core.dll
+  from NuGet and the CRT from the runner, zips them and attaches the result -
+  so one package serves Windows 10 and Windows 11.
+- **CI that answers before you download anything**: clippy with `-D warnings`
+  in two feature sets and the whole test suite, on the toolchain the repository
+  pins.
+
+What this fork deliberately does not do: add a fourth opinion about switches,
+or claim frame rates the submitting thread cannot deliver. The frame time is
+decided there, not by the card - see the notes further down.
 
 ---
 

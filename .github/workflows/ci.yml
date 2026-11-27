@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  # So a run can be started from the Actions tab, which is what a fork needs
+  # after Actions has just been switched on: without it the only way to get a
+  # first run is another push.
+  workflow_dispatch:
 
 permissions:
   contents: read
